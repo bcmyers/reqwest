@@ -567,6 +567,7 @@ impl ClientBuilder {
 
                     // Set TLS versions.
                     let mut versions = rustls::ALL_VERSIONS.to_vec();
+                    println!("{:#?}", versions);
 
                     if let Some(min_tls_version) = config.min_tls_version {
                         versions.retain(|&supported_version| {
@@ -596,20 +597,22 @@ impl ClientBuilder {
                     // If not, we use ring.
                     let provider = rustls::crypto::CryptoProvider::get_default()
                         .map(|arc| arc.clone())
-                        .unwrap_or_else(|| {
-                            #[cfg(not(feature = "__rustls-ring"))]
-                            panic!("No provider set");
+                        .unwrap_or_else(|| Arc::new(rustls::crypto::default_fips_provider()));
 
-                            #[cfg(feature = "__rustls-ring")]
-                            Arc::new(rustls::crypto::ring::default_provider())
-                        });
+                    println!("provider: {:#?}", provider);
 
                     // Build TLS config
                     let signature_algorithms = provider.signature_verification_algorithms;
-                    let config_builder =
-                        rustls::ClientConfig::builder_with_provider(provider.clone())
-                            .with_protocol_versions(&versions)
-                            .map_err(|_| crate::error::builder("invalid TLS versions"))?;
+                    println!("signature_algos: {:#?}", signature_algorithms);
+
+                    let config_builder = {
+                        let builder = rustls::ClientConfig::builder_with_provider(provider.clone());
+                        println!("{:#?}", builder);
+                        match builder.with_protocol_versions(&versions) {
+                            Ok(config_builder) => config_builder,
+                            Err(e) => panic!("failed here: {}", e),
+                        }
+                    };
 
                     let config_builder = if !config.certs_verification {
                         config_builder
@@ -1387,8 +1390,8 @@ impl ClientBuilder {
     /// # Example
     ///
     /// ```
-    /// # #[cfg(all(feature = "__rustls", not(feature = "__rustls-ring")))]
-    /// # let _ = rustls::crypto::ring::default_provider().install_default();
+    /// # #[cfg(all(feature = "__rustls", not(feature = "__rustls")))]
+    /// # let _ = rustls::crypto::aws_lc_rs::default_provider().install_default();
     /// use std::net::IpAddr;
     /// let local_addr = IpAddr::from([12, 4, 1, 8]);
     /// let client = reqwest::Client::builder()
@@ -1408,8 +1411,8 @@ impl ClientBuilder {
     /// # Example
     ///
     /// ```
-    /// # #[cfg(all(feature = "__rustls", not(feature = "__rustls-ring")))]
-    /// # let _ = rustls::crypto::ring::default_provider().install_default();
+    /// # #[cfg(feature = "__rustls")]
+    /// # let _ = rustls::crypto::aws_lc_rs::default_provider().install_default();
     /// let interface = "lo";
     /// let client = reqwest::Client::builder()
     ///     .interface(interface)
